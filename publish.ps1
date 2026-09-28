@@ -14,7 +14,7 @@ Step "typecheck" { npm run typecheck }
 Step "git commit" {
   git add -A
   git diff --cached --quiet
-  if ($LASTEXITCODE -ne 0) { git commit -m "Add Himalayas, Jobicy, Remote OK, We Work Remotely sources + resume ranking" } else { $global:LASTEXITCODE = 0 }
+  if ($LASTEXITCODE -ne 0) { git commit -m "Update MyJobSearchBot ($(Get-Date -Format yyyy-MM-dd))" } else { $global:LASTEXITCODE = 0 }
 }
 Step "git push" { git push }
 Step "trigger.dev deploy" { npx trigger.dev@4.6.4 deploy }

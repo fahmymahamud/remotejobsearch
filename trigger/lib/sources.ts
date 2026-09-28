@@ -21,6 +21,15 @@ function fromUnix(n: number): Date {
   return new Date(n < 1e12 ? n * 1000 : n);
 }
 
+function escRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Matches location text that a remote worker in `country` can apply to. */
+export function openTo(country: string): RegExp {
+  return new RegExp(`${escRe(country)}|asia|apac|worldwide|anywhere|global`, "i");
+}
+
 async function safe(name: string, fn: () => Promise<SourceResult>): Promise<SourceResult> {
   try {
     return await fn();
@@ -30,7 +39,7 @@ async function safe(name: string, fn: () => Promise<SourceResult>): Promise<Sour
 }
 
 // ---------------------------------------------------------------------------
-// Himalayas — remote jobs, filtered server-side to roles open to Singapore residents.
+// Himalayas — remote jobs, filtered server-side to roles open to residents of `country`.
 // Terms: link back to Himalayas and credit it as the source.
 // ---------------------------------------------------------------------------
 type HimalayasJob = {
@@ -47,13 +56,13 @@ type HimalayasJob = {
   currency?: string;
 };
 
-export function himalayas(keywords: string[]): Promise<SourceResult> {
+export function himalayas(keywords: string[], country: string): Promise<SourceResult> {
   return safe("Himalayas", async () => {
     const seen = new Set<string>();
     const jobs: Job[] = [];
     let fetched = 0;
     for (const q of keywords) {
-      const url = `https://himalayas.app/jobs/api/search?${new URLSearchParams({ q, country: "Singapore", sort: "recent" })}`;
+      const url = `https://himalayas.app/jobs/api/search?${new URLSearchParams({ q, country, sort: "recent" })}`;
       const data = await getJson<{ jobs?: HimalayasJob[] }>(url);
       for (const j of data.jobs ?? []) {
         fetched++;
@@ -95,19 +104,19 @@ type JobicyJob = {
   salaryCurrency?: string;
 };
 
-export function jobicy(): Promise<SourceResult> {
+export function jobicy(geo: string, country: string): Promise<SourceResult> {
   return safe("Jobicy", async () => {
-    const data = await getJson<{ jobs?: JobicyJob[] }>("https://jobicy.com/api/v2/remote-jobs?count=100&geo=apac");
+    const data = await getJson<{ jobs?: JobicyJob[] }>(`https://jobicy.com/api/v2/remote-jobs?${new URLSearchParams({ count: "100", geo })}`);
     const list = data.jobs ?? [];
     const jobs: Job[] = list
-      // APAC listings are sometimes country-specific (e.g. "China", "Australia"): keep only ones Singapore can apply to.
-      .filter((j) => /singapore|apac|asia|anywhere|worldwide/i.test(j.jobGeo ?? ""))
+      // Regional listings are sometimes country-specific (e.g. "China", "Australia"): keep only ones `country` can apply to.
+      .filter((j) => openTo(country).test(j.jobGeo ?? ""))
       .map((j) => {
         const d = new Date(j.pubDate);
         return {
           title: stripHtml(j.jobTitle),
           company: j.companyName,
-          location: j.jobGeo ?? "APAC",
+          location: j.jobGeo ?? geo,
           source: "Jobicy",
           url: j.url,
           postedAt: d,
@@ -136,13 +145,13 @@ type RemoteOkJob = {
   salary_max?: number;
 };
 
-export function remoteOk(): Promise<SourceResult> {
+export function remoteOk(country: string): Promise<SourceResult> {
   return safe("Remote OK", async () => {
     const data = await getJson<RemoteOkJob[]>("https://remoteok.com/api");
     const list = data.filter((j) => j.position && j.url);
     const jobs: Job[] = list
-      // Empty location = no restriction stated. Otherwise it must mention Singapore/Asia/worldwide.
-      .filter((j) => !j.location?.trim() || /singapore|asia|apac|worldwide|anywhere|global/i.test(j.location))
+      // Empty location = no restriction stated. Otherwise it must mention `country`/Asia/worldwide.
+      .filter((j) => !j.location?.trim() || openTo(country).test(j.location))
       .map((j) => {
         const d = j.epoch ? fromUnix(j.epoch) : null;
         return {
@@ -163,7 +172,7 @@ export function remoteOk(): Promise<SourceResult> {
 
 // ---------------------------------------------------------------------------
 // We Work Remotely — RSS. "Anywhere in the World" can still carry a <country> list
-// (often Europe-only), so a listed country set must include Singapore.
+// (often Europe-only), so a listed country set must include `country`.
 // ---------------------------------------------------------------------------
 type WwrItem = {
   title?: string;
@@ -176,7 +185,7 @@ type WwrItem = {
   link?: string;
 };
 
-export function weWorkRemotely(): Promise<SourceResult> {
+export function weWorkRemotely(country: string): Promise<SourceResult> {
   return safe("We Work Remotely", async () => {
     const xml = await getText("https://weworkremotely.com/remote-jobs.rss");
     const parsed = new XMLParser({ ignoreAttributes: true }).parse(xml);
@@ -184,9 +193,9 @@ export function weWorkRemotely(): Promise<SourceResult> {
     const items: WwrItem[] = Array.isArray(raw) ? raw : [raw];
     const jobs: Job[] = items
       .filter((i) => {
-        const country = String(i.country ?? "").trim();
-        if (country) return /singapore/i.test(country);
-        return /anywhere|asia|apac|worldwide/i.test(String(i.region ?? ""));
+        const listed = String(i.country ?? "").trim();
+        if (listed) return new RegExp(escRe(country), "i").test(listed);
+        return openTo(country).test(String(i.region ?? ""));
       })
       .map((i) => {
         // WWR titles look like "Company: Job title"

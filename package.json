@@ -2,7 +2,8 @@
   "name": "ai-remote-job-digest",
   "version": "1.0.0",
   "private": true,
-  "description": "Daily Trigger.dev task: searches Google Jobs (SerpAPI) for fresh remote AI roles and sends a Telegram digest.",
+  "description": "MyJobSearchBot: daily Trigger.dev task that finds remote jobs open to your country, ranks them against your resume, and sends them to Telegram.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "trigger dev",

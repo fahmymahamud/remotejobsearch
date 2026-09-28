@@ -26,7 +26,11 @@ const cfg = () => ({
     "data engineer ai remote",
   ]),
   googleSites: list(process.env.JOB_SOURCES, []),
-  location: process.env.JOB_LOCATION ?? "Singapore",
+  // Country you live in: remote jobs must be open to it. Also used as the Google Jobs location.
+  country: process.env.JOB_COUNTRY ?? "Singapore",
+  // Jobicy region slug: apac, emea, latam, usa, canada, europe, ...
+  jobicyGeo: process.env.JOBICY_GEO ?? "apac",
+  location: process.env.JOB_LOCATION ?? process.env.JOB_COUNTRY ?? "Singapore",
   gl: process.env.JOB_GL ?? "sg",
   // Normally "new since the last scheduled run". Set LOOKBACK_HOURS (e.g. 72) to widen it for testing.
   lookbackHours: process.env.LOOKBACK_HOURS ? Number(process.env.LOOKBACK_HOURS) : null,
@@ -80,10 +84,10 @@ export async function runDigest(payload: { timestamp: Date; lastTimestamp?: Date
 
   // 1. Fetch every source in parallel. One failing source never stops the digest.
   const sources: SourceResult[] = await Promise.all([
-    himalayas(c.himalayasQueries),
-    jobicy(),
-    remoteOk(),
-    weWorkRemotely(),
+    himalayas(c.himalayasQueries, c.country),
+    jobicy(c.jobicyGeo, c.country),
+    remoteOk(c.country),
+    weWorkRemotely(c.country),
     ...(serpKey
       ? [googleJobs({ apiKey: serpKey, queries: c.googleQueries, location: c.location, gl: c.gl, sites: c.googleSites })]
       : []),
@@ -115,7 +119,7 @@ export async function runDigest(payload: { timestamp: Date; lastTimestamp?: Date
     sources: stats.map((st) => ({
       name: st.s.name,
       fetched: st.s.fetched,
-      remoteForSingapore: st.eligible,
+      remoteForCountry: st.eligible,
       relevantRoles: st.relevant,
       new: st.fresh.length,
       error: st.s.error,
@@ -129,7 +133,7 @@ export async function runDigest(payload: { timestamp: Date; lastTimestamp?: Date
   const sourceLines = stats.map((st) =>
     st.s.error
       ? `⚠️ ${esc(st.s.name)}: failed (${esc(st.s.error.slice(0, 60))})`
-      : `• ${esc(st.s.name)}: ${st.s.fetched} checked → ${st.eligible} remote/SG-OK → ${st.relevant} your roles → <b>${st.fresh.length} new</b>`,
+      : `• ${esc(st.s.name)}: ${st.s.fetched} checked → ${st.eligible} open to ${esc(c.country)} → ${st.relevant} your roles → <b>${st.fresh.length} new</b>`,
   );
   const header =
     `🤖 <b>Remote jobs for you · ${date}</b>\n` +
