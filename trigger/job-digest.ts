@@ -161,6 +161,18 @@ export async function runDigest(payload: { timestamp: Date; lastTimestamp?: Date
     cutoff: cutoff.toISOString(),
     new: ranked.length,
     shown: shown.length,
+    // Full list of the jobs sent to Telegram, so other tools (e.g. CareerOS) can read today's digest via the Trigger.dev API.
+    jobs: shown.map((j) => ({
+      title: j.title,
+      company: j.company,
+      location: j.location,
+      source: j.source,
+      url: j.url,
+      postedAt: j.postedAt ? j.postedAt.toISOString() : null,
+      salary: j.salary ?? null,
+      score: j.score,
+      matched: j.matched,
+    })),
     sources: stats.map((st) => ({ name: st.s.name, fetched: st.s.fetched, new: st.fresh.length, error: st.s.error })),
   };
 }
